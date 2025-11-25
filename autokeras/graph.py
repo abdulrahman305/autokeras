@@ -23,6 +23,21 @@ from autokeras.engine import serializable
 from autokeras.utils import io_utils
 
 
+def feature_encoding_input(block):
+    """Fetch the column_types and column_names.
+
+    The values are fetched for FeatureEncoding from StructuredDataInput.
+    """
+    block.column_types = block.inputs[0].column_types
+    block.column_names = block.inputs[0].column_names
+
+
+# Compile the graph.
+COMPILE_FUNCTIONS = {
+    blocks_module.StructuredDataBlock: [feature_encoding_input],
+}
+
+
 def load_graph(filepath, custom_objects=None):
     if custom_objects is None:
         custom_objects = {}
@@ -211,8 +226,15 @@ class Graph(keras_tuner.HyperModel, serializable.Serializable):
         outputs = [nodes[node_id] for node_id in config["outputs"]]
         return cls(inputs=inputs, outputs=outputs)
 
+    def compile(self):
+        """Share the information between blocks."""
+        for block in self.blocks:
+            for func in COMPILE_FUNCTIONS.get(block.__class__, []):
+                func(block)
+
     def build(self, hp):
         """Build the HyperModel into a Keras Model."""
+        self.compile()
         keras_nodes = {}
         keras_input_nodes = []
         for node in self.inputs:
@@ -274,7 +296,9 @@ class Graph(keras_tuner.HyperModel, serializable.Serializable):
         elif optimizer_name == "sgd":
             optimizer = keras.optimizers.SGD(learning_rate=learning_rate)
         elif optimizer_name == "adam_weight_decay":
-            steps_per_epoch = int(self.num_samples / self.batch_size)
+            steps_per_epoch = max(
+                1, int(self.num_samples / (self.batch_size or 32))
+            )
             num_train_steps = steps_per_epoch * self.epochs
 
             lr_schedule = keras.optimizers.schedules.PolynomialDecay(
@@ -313,6 +337,7 @@ class Graph(keras_tuner.HyperModel, serializable.Serializable):
         # Epochs not specified by the user
         if self.epochs is None:
             self.epochs = 1
+        validation_split = validation_split or 0
         # num_samples from analysers are before split
         self.num_samples = self.inputs[0].num_samples * (1 - validation_split)
 

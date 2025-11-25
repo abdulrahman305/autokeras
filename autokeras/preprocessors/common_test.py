@@ -12,16 +12,50 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import tensorflow as tf
+import numpy as np
 
 from autokeras import test_utils
 from autokeras.preprocessors import common
 
 
 def test_cast_to_int32_return_int32():
-    dataset = test_utils.generate_one_hot_labels(100, 10, "dataset")
-    dataset = dataset.map(lambda x: tf.cast(x, tf.uint8))
-    dataset = common.CastToInt32().transform(dataset)
-    for data in dataset:
-        assert data.dtype == tf.int32
-        break
+    x = test_utils.generate_one_hot_labels(100, 10)
+    x = x.astype("uint8")
+    x = common.CastToInt32().transform(x)
+    assert x.dtype == "int32"
+
+
+def test_cast_to_string_with_bytes():
+    x = np.array([b"hello", b"world"])
+    result = common.CastToString().transform(x)
+    assert result.dtype.kind in ["U", "S"]  # Unicode or byte string
+    assert result[0] == "hello"
+    assert result[1] == "world"
+
+
+def test_cast_to_string_with_strings():
+    x = np.array(["hello", "world"])
+    result = common.CastToString().transform(x)
+    assert result.dtype.kind in ["U", "S"]
+    assert result[0] == "hello"
+    assert result[1] == "world"
+
+
+def test_text_tokenizer_vocab_limit():
+    x = np.array(["word1 word2 word3", "word1 word4 word5"])
+    tokenizer = common.TextTokenizer(max_vocab=2)
+    tokenizer.fit(x)
+    assert len(tokenizer.vocab) <= 3  # 2 words + 1 for unknown (0 is padding)
+    # word1 should be most frequent
+    assert "word1" in tokenizer.vocab
+    assert tokenizer.vocab["word1"] == 1
+
+
+def test_text_tokenizer_transform():
+    x = np.array(["hello world", "hello"])
+    tokenizer = common.TextTokenizer(max_vocab=10)
+    tokenizer.fit(x)
+    result = tokenizer.transform(x)
+    assert result.shape == (2, 100)  # max_len=100
+    assert result.dtype == np.int32
+    assert result[0][0] == tokenizer.vocab.get("hello", 0)

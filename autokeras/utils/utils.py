@@ -16,8 +16,32 @@ import re
 
 import keras
 import keras_tuner
-import tensorflow as tf
 import tree
+
+# Collect OOM exceptions from available libraries
+oom_exceptions = []
+try:
+    import tensorflow as tf
+
+    oom_exceptions.append(tf.errors.ResourceExhaustedError)  # pragma: no cover
+except ImportError:  # pragma: no cover
+    pass  # pragma: no cover
+
+try:
+    import torch
+
+    oom_exceptions.append(torch.cuda.OutOfMemoryError)  # pragma: no cover
+except ImportError:  # pragma: no cover
+    pass  # pragma: no cover
+
+try:
+    import jax
+
+    oom_exceptions.append(jax.errors.ResourceExhaustedError)  # pragma: no cover
+except (ImportError, AttributeError):  # pragma: no cover
+    pass  # pragma: no cover
+
+oom_exceptions = tuple(oom_exceptions)
 
 
 def validate_num_inputs(inputs, num):
@@ -73,26 +97,26 @@ def fit_with_adaptive_batch_size(model, batch_size, **fit_kwargs):
 
 
 def run_with_adaptive_batch_size(batch_size, func, **fit_kwargs):
-    x = fit_kwargs.pop("x")
     validation_data = None
     if "validation_data" in fit_kwargs:
         validation_data = fit_kwargs.pop("validation_data")
     while batch_size > 0:
         try:
-            history = func(x=x, validation_data=validation_data, **fit_kwargs)
+            history = func(
+                validation_data=validation_data,
+                batch_size=batch_size,
+                **fit_kwargs,
+            )
             break
-        except tf.errors.ResourceExhaustedError as e:
-            if batch_size == 1:
-                raise e
-            batch_size //= 2
-            print(
+        except oom_exceptions as e:  # pragma: no cover
+            if batch_size == 1:  # pragma: no cover
+                raise e  # pragma: no cover
+            batch_size //= 2  # pragma: no cover
+            print(  # pragma: no cover
                 "Not enough memory, reduce batch size to {batch_size}.".format(
                     batch_size=batch_size
                 )
             )
-            x = x.unbatch().batch(batch_size)
-            if validation_data is not None:
-                validation_data = validation_data.unbatch().batch(batch_size)
     return history
 
 

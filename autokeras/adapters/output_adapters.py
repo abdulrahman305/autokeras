@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import numpy as np
-import tensorflow as tf
 
 from autokeras.engine import adapter as adapter_module
 
@@ -24,15 +23,11 @@ class HeadAdapter(adapter_module.Adapter):
         self.name = name
 
     def check(self, dataset):
-        supported_types = (tf.data.Dataset, np.ndarray)
-        if not isinstance(dataset, supported_types):
+        if not isinstance(dataset, np.ndarray):
             raise TypeError(
-                f"Expect the target data of {self.name} to be tf.data.Dataset,"
+                f"Expect the target data of {self.name} to be"
                 f" np.ndarray, but got {type(dataset)}."
             )
-
-    def convert_to_dataset(self, dataset, batch_size):
-        return super().convert_to_dataset(dataset, batch_size)
 
 
 class ClassificationAdapter(HeadAdapter):
